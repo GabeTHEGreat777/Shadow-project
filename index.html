@@ -27,6 +27,12 @@
       </div>
 
       <div class="header-actions">
+        <select id="theme-select" class="theme-select" aria-label="Theme">
+          <option value="auto">Auto Theme</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="steel">Steel</option>
+        </select>
         <button id="escape-toggle" class="ghost-btn" type="button">Conceal (Esc)</button>
 
         <form id="vault-form" class="vault-controls">
@@ -92,6 +98,17 @@
         <div class="panel-head">
           <h2>Long Horizon Planner</h2>
           <p>1-5 year arcs, not sprints.</p>
+        </div>
+
+        <div class="toolbar">
+          <input id="mission-search" placeholder="Search missions or moves..." />
+          <input id="tag-filter" placeholder="Filter by tag..." />
+          <label class="check-inline">
+            <input id="show-archived" type="checkbox" />
+            Show archived
+          </label>
+          <button id="undo-btn" type="button">Undo</button>
+          <button id="redo-btn" type="button">Redo</button>
         </div>
 
         <form id="mission-form" class="stack-form">
@@ -239,12 +256,28 @@
 
         <form class="move-form compact-inline">
           <input class="move-title" maxlength="80" placeholder="Strategic move" required />
+          <input class="move-tags" maxlength="120" placeholder="tags: launch,legal" />
           <select class="move-leverage" required>
             <option value="Skill">Skill</option>
             <option value="Network">Network</option>
             <option value="Capital">Capital</option>
             <option value="Distribution">Distribution</option>
             <option value="Technology">Technology</option>
+          </select>
+          <select class="move-priority" required>
+            <option value="Low">Low</option>
+            <option value="Medium" selected>Medium</option>
+            <option value="High">High</option>
+            <option value="Critical">Critical</option>
+          </select>
+          <input class="move-deadline" type="date" />
+          <input class="move-progress" type="number" min="0" max="100" value="0" />
+          <select class="move-color" required>
+            <option value="default">Default</option>
+            <option value="blue">Blue</option>
+            <option value="green">Green</option>
+            <option value="amber">Amber</option>
+            <option value="red">Red</option>
           </select>
           <select class="move-phase" required></select>
           <button type="submit">Add Move</button>
@@ -253,6 +286,13 @@
         <div class="moves"></div>
       </article>
     </template>
+
+    <div id="command-palette" class="command-palette hidden" aria-hidden="true">
+      <div class="command-box">
+        <input id="command-input" placeholder="Type a command..." />
+        <div id="command-list" class="command-list"></div>
+      </div>
+    </div>
 
     <script src="./app.js" defer></script>
   </body>

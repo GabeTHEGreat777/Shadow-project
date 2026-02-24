@@ -4,6 +4,7 @@ const KDF_ITERATIONS = 210000;
 const AUTO_LOCK_MS = 10 * 60 * 1000;
 const LEVERAGE_TYPES = ["Skill", "Network", "Capital", "Distribution", "Technology"];
 const MISSION_STATUS = ["Planning", "Active", "Completed", "Abandoned"];
+const THEME_KEY = "shadowboard-theme-v1";
 
 let state = freshState();
 let bootState = freshState();
@@ -12,12 +13,23 @@ let sessionPassphrase = "";
 let autoLockTimer = null;
 let activeView = "dashboard";
 let selectedMissionId = null;
+let undoStack = [];
+let redoStack = [];
+let lastSnapshot = JSON.stringify(state);
+let searchTerm = "";
+let tagFilter = "";
+let showArchived = false;
 
 const missionForm = document.getElementById("mission-form");
 const missionTitleInput = document.getElementById("mission-title");
 const missionHorizonInput = document.getElementById("mission-horizon");
 const missionsList = document.getElementById("missions-list");
 const missionTemplate = document.getElementById("mission-template");
+const missionSearchInput = document.getElementById("mission-search");
+const tagFilterInput = document.getElementById("tag-filter");
+const showArchivedInput = document.getElementById("show-archived");
+const undoBtn = document.getElementById("undo-btn");
+const redoBtn = document.getElementById("redo-btn");
 
 const riskForm = document.getElementById("risk-form");
 const riskTitleInput = document.getElementById("risk-title");
@@ -70,12 +82,17 @@ const vaultPrimaryBtn = document.getElementById("vault-primary");
 const vaultLockBtn = document.getElementById("vault-lock");
 const vaultRotateBtn = document.getElementById("vault-rotate");
 const vaultStatusEl = document.getElementById("vault-status");
+const themeSelect = document.getElementById("theme-select");
+const commandPalette = document.getElementById("command-palette");
+const commandInput = document.getElementById("command-input");
+const commandList = document.getElementById("command-list");
 
 init().catch(() => {
   setVaultStatus("Vault initialization failed.", true);
 });
 
 async function init() {
+  applyTheme(localStorage.getItem(THEME_KEY) || "auto");
   bindEvents();
   drawRiskGridBase();
   setView(activeView);
@@ -98,6 +115,33 @@ function bindEvents() {
       setView(btn.dataset.view);
     });
   }
+
+  themeSelect.addEventListener("change", () => {
+    applyTheme(themeSelect.value);
+  });
+
+  missionSearchInput.addEventListener("input", () => {
+    searchTerm = missionSearchInput.value.trim().toLowerCase();
+    renderMissions();
+  });
+
+  tagFilterInput.addEventListener("input", () => {
+    tagFilter = tagFilterInput.value.trim().toLowerCase();
+    renderMissions();
+  });
+
+  showArchivedInput.addEventListener("change", () => {
+    showArchived = showArchivedInput.checked;
+    renderMissions();
+  });
+
+  undoBtn.addEventListener("click", async () => {
+    await applyUndo();
+  });
+
+  redoBtn.addEventListener("click", async () => {
+    await applyRedo();
+  });
 
   drawerCloseBtn.addEventListener("click", closeMissionDrawer);
   drawerBackdrop.addEventListener("click", closeMissionDrawer);
@@ -141,8 +185,14 @@ function bindEvents() {
     mission.strategicMoves.push({
       id: uid(),
       title,
+      tags: [],
       leverageType,
+      priority: "Medium",
+      deadline: null,
+      progress: 0,
+      color: "default",
       phaseId,
+      archived: false,
       status: "Planning"
     });
     drawerMoveTitleInput.value = "";
@@ -283,8 +333,36 @@ function bindEvents() {
     if (isUnlocked) {
       bumpAutoLockTimer();
     }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      toggleCommandPalette();
+      return;
+    }
+    if (event.key.toLowerCase() === "g" && event.shiftKey) {
+      setView("dashboard");
+    }
+    if (event.key.toLowerCase() === "m" && event.shiftKey) {
+      setView("missions");
+    }
+    if (event.key.toLowerCase() === "r" && event.shiftKey) {
+      setView("risk");
+    }
+    if (event.key.toLowerCase() === "o" && event.shiftKey) {
+      setView("momentum");
+    }
     if (event.key === "Escape") {
+      if (!commandPalette.classList.contains("hidden")) {
+        closeCommandPalette();
+        return;
+      }
       toggleConcealment();
+    }
+  });
+
+  commandInput.addEventListener("input", renderCommandPalette);
+  commandPalette.addEventListener("click", (event) => {
+    if (event.target === commandPalette) {
+      closeCommandPalette();
     }
   });
 
@@ -304,6 +382,9 @@ function bindEvents() {
 
 async function setupNewVault(passphrase) {
   state = structuredCloneSafe(bootState);
+  undoStack = [];
+  redoStack = [];
+  lastSnapshot = JSON.stringify(state);
   await persistEncryptedState(passphrase);
   sessionPassphrase = passphrase;
   isUnlocked = true;
@@ -318,6 +399,9 @@ async function unlockVault(passphrase, payload) {
   try {
     const decrypted = await decryptState(passphrase, payload);
     state = normalizeState(decrypted);
+    undoStack = [];
+    redoStack = [];
+    lastSnapshot = JSON.stringify(state);
     sessionPassphrase = passphrase;
     isUnlocked = true;
     bumpAutoLockTimer();
@@ -336,6 +420,9 @@ function lockVaultUI(message) {
   clearAutoLockTimer();
   closeMissionDrawer();
   state = freshState();
+  undoStack = [];
+  redoStack = [];
+  lastSnapshot = JSON.stringify(state);
   renderAll();
   syncVaultUI();
   setVaultStatus(message || "Vault locked.");
@@ -378,11 +465,13 @@ function renderAll() {
   renderRisks();
   renderMomentum();
   renderMissionDrawer();
+  undoBtn.disabled = undoStack.length === 0;
+  redoBtn.disabled = redoStack.length === 0;
 }
 
 function renderDashboard() {
   const missions = state.missions;
-  const allMoves = missions.flatMap((mission) => mission.strategicMoves || []);
+  const allMoves = missions.flatMap((mission) => (mission.strategicMoves || []).filter((move) => !move.archived));
   const activeMissions = missions.filter((mission) => mission.status === "Active").length;
   const totalPhases = missions.reduce((sum, mission) => sum + mission.phases.length, 0);
   const momentumAvg = state.momentumLogs.length
@@ -437,18 +526,18 @@ function renderDashboard() {
 
 function renderMissions() {
   missionsList.innerHTML = "";
-
-  if (!state.missions.length) {
+  const missions = filteredMissions();
+  if (!missions.length) {
     const empty = document.createElement("p");
     empty.className = "meta";
     empty.textContent = isUnlocked
-      ? "No missions yet. Define your first long-horizon objective."
+      ? "No missions match the current filters."
       : "Vault locked.";
     missionsList.append(empty);
     return;
   }
 
-  for (const mission of state.missions) {
+  for (const mission of missions) {
     const node = missionTemplate.content.firstElementChild.cloneNode(true);
     node.dataset.missionId = mission.id;
     node.querySelector("h3").textContent = mission.title;
@@ -474,7 +563,12 @@ function renderMissions() {
     moveForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const title = moveForm.querySelector(".move-title").value.trim();
+      const tags = parseTags(moveForm.querySelector(".move-tags").value);
       const leverageType = moveForm.querySelector(".move-leverage").value;
+      const priority = moveForm.querySelector(".move-priority").value;
+      const deadline = moveForm.querySelector(".move-deadline").value || null;
+      const progress = clampNum(Number(moveForm.querySelector(".move-progress").value), 0, 100, 0);
+      const color = moveForm.querySelector(".move-color").value;
       const phaseId = moveForm.querySelector(".move-phase").value;
 
       if (!title || !phaseId) {
@@ -484,8 +578,14 @@ function renderMissions() {
       mission.strategicMoves.push({
         id: uid(),
         title,
+        tags,
         leverageType,
+        priority,
+        deadline,
+        progress,
+        color,
         phaseId,
+        archived: false,
         status: "Planning"
       });
 
@@ -505,16 +605,26 @@ function renderMissions() {
     }
 
     const moveWrap = node.querySelector(".moves");
-    if (!mission.strategicMoves.length) {
+    const visibleMoves = mission.strategicMoves.filter((move) => {
+      if (!showArchived && move.archived) {
+        return false;
+      }
+      return true;
+    });
+
+    if (!visibleMoves.length) {
       moveWrap.append(makeMeta("No strategic moves yet."));
     } else {
-      for (const move of mission.strategicMoves) {
+      for (const move of visibleMoves) {
         const phase = mission.phases.find((p) => p.id === move.phaseId);
         const row = document.createElement("div");
-        row.className = "move-row";
+        row.className = `move-row ${move.color && move.color !== "default" ? `color-${move.color}` : ""}`.trim();
 
         const left = document.createElement("div");
-        left.innerHTML = `<div>${escapeHTML(move.title)}</div><small>${move.leverageType}${phase ? ` • ${escapeHTML(phase.title)}` : ""}</small>`;
+        const tags = move.tags?.length ? ` • #${move.tags.join(" #")}` : "";
+        const deadline = move.deadline ? ` • due ${shortDate(move.deadline)}` : "";
+        const archivedLabel = move.archived ? " • archived" : "";
+        left.innerHTML = `<div>${escapeHTML(move.title)}</div><small>${move.leverageType}${phase ? ` • ${escapeHTML(phase.title)}` : ""} • ${move.priority}${deadline}${tags}${archivedLabel}</small><div class="progress-track"><div class="progress-fill" style="width:${clampNum(move.progress ?? 0, 0, 100, 0)}%"></div></div>`;
 
         const actions = document.createElement("div");
         actions.className = "action-row";
@@ -536,7 +646,15 @@ function renderMissions() {
           await saveAndRender();
         });
 
-        actions.append(statusBtn, deleteBtn);
+        const archiveBtn = document.createElement("button");
+        archiveBtn.type = "button";
+        archiveBtn.textContent = move.archived ? "Restore" : "Archive";
+        archiveBtn.addEventListener("click", async () => {
+          move.archived = !move.archived;
+          await saveAndRender();
+        });
+
+        actions.append(statusBtn, archiveBtn, deleteBtn);
         row.append(left, actions);
         moveWrap.append(row);
       }
@@ -909,7 +1027,8 @@ function renderMissionDrawer() {
       row.className = "move-row";
       const phase = mission.phases.find((item) => item.id === move.phaseId);
       const left = document.createElement("div");
-      left.innerHTML = `<div>${escapeHTML(move.title)}</div><small>${move.leverageType}${phase ? ` • ${escapeHTML(phase.title)}` : ""}</small>`;
+      const tags = move.tags?.length ? ` • #${move.tags.join(" #")}` : "";
+      left.innerHTML = `<div>${escapeHTML(move.title)}</div><small>${move.leverageType}${phase ? ` • ${escapeHTML(phase.title)}` : ""} • ${move.priority}${tags}</small><div class="progress-track"><div class="progress-fill" style="width:${clampNum(move.progress ?? 0, 0, 100, 0)}%"></div></div>`;
       const actions = document.createElement("div");
       actions.className = "action-row";
 
@@ -931,7 +1050,15 @@ function renderMissionDrawer() {
         await saveAndRender();
       });
 
-      actions.append(statusBtn, deleteBtn);
+      const archiveBtn = document.createElement("button");
+      archiveBtn.type = "button";
+      archiveBtn.textContent = move.archived ? "Restore" : "Archive";
+      archiveBtn.addEventListener("click", async () => {
+        move.archived = !move.archived;
+        await saveAndRender();
+      });
+
+      actions.append(statusBtn, archiveBtn, deleteBtn);
       row.append(left, actions);
       drawerMovesEl.append(row);
     }
@@ -965,10 +1092,126 @@ function setView(viewName) {
   }
 }
 
+function applyTheme(theme) {
+  const root = document.documentElement;
+  root.classList.remove("theme-light", "theme-steel");
+  if (theme === "light") {
+    root.classList.add("theme-light");
+  } else if (theme === "steel") {
+    root.classList.add("theme-steel");
+  } else if (theme === "auto") {
+    if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+      root.classList.add("theme-light");
+    }
+  }
+  if (themeSelect.value !== theme) {
+    themeSelect.value = theme;
+  }
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+function filteredMissions() {
+  return state.missions.filter((mission) => {
+    const missionText = mission.title.toLowerCase();
+    const moveText = mission.strategicMoves
+      .map((move) => `${move.title} ${move.tags?.join(" ") || ""}`.toLowerCase())
+      .join(" ");
+    const searchOk = !searchTerm || missionText.includes(searchTerm) || moveText.includes(searchTerm);
+    const tagOk = !tagFilter || mission.strategicMoves.some((move) => (move.tags || []).some((tag) => tag.includes(tagFilter)));
+    const archiveOk = showArchived || mission.strategicMoves.some((move) => !move.archived);
+    return searchOk && tagOk && archiveOk;
+  });
+}
+
+function parseTags(raw) {
+  return raw
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function clampNum(value, min, max, fallback) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function getCommands() {
+  return [
+    { id: "view-dashboard", label: "Go Dashboard", run: () => setView("dashboard") },
+    { id: "view-missions", label: "Go Missions", run: () => setView("missions") },
+    { id: "view-risk", label: "Go Risk Surface", run: () => setView("risk") },
+    { id: "view-momentum", label: "Go Momentum", run: () => setView("momentum") },
+    { id: "toggle-conceal", label: "Toggle Conceal Mode", run: () => toggleConcealment() },
+    { id: "lock-vault", label: "Lock Vault", run: () => lockVaultUI("Vault locked.") },
+    { id: "undo", label: "Undo", run: async () => applyUndo() },
+    { id: "redo", label: "Redo", run: async () => applyRedo() }
+  ];
+}
+
+function toggleCommandPalette() {
+  if (commandPalette.classList.contains("hidden")) {
+    commandPalette.classList.remove("hidden");
+    commandPalette.setAttribute("aria-hidden", "false");
+    commandInput.value = "";
+    renderCommandPalette();
+    commandInput.focus();
+  } else {
+    closeCommandPalette();
+  }
+}
+
+function closeCommandPalette() {
+  commandPalette.classList.add("hidden");
+  commandPalette.setAttribute("aria-hidden", "true");
+}
+
+function renderCommandPalette() {
+  const term = commandInput.value.trim().toLowerCase();
+  const commands = getCommands().filter((command) => !term || command.label.toLowerCase().includes(term));
+  commandList.innerHTML = "";
+  for (const command of commands) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "command-item";
+    btn.textContent = command.label;
+    btn.addEventListener("click", async () => {
+      closeCommandPalette();
+      await command.run();
+    });
+    commandList.append(btn);
+  }
+}
+
+async function applyUndo() {
+  if (!undoStack.length) {
+    return;
+  }
+  redoStack.push(JSON.stringify(state));
+  state = JSON.parse(undoStack.pop());
+  lastSnapshot = JSON.stringify(state);
+  await saveAndRender(false);
+}
+
+async function applyRedo() {
+  if (!redoStack.length) {
+    return;
+  }
+  undoStack.push(JSON.stringify(state));
+  state = JSON.parse(redoStack.pop());
+  lastSnapshot = JSON.stringify(state);
+  await saveAndRender(false);
+}
+
 function leverageCounts() {
   const counts = Object.fromEntries(LEVERAGE_TYPES.map((type) => [type, 0]));
   for (const mission of state.missions) {
     for (const move of mission.strategicMoves) {
+      if (move.archived) {
+        continue;
+      }
       counts[move.leverageType] += 1;
     }
   }
@@ -978,6 +1221,9 @@ function leverageCounts() {
 function missionLeverageCounts(mission) {
   const counts = Object.fromEntries(LEVERAGE_TYPES.map((type) => [type, 0]));
   for (const move of mission.strategicMoves) {
+    if (move.archived) {
+      continue;
+    }
     counts[move.leverageType] += 1;
   }
   return counts;
@@ -999,7 +1245,16 @@ function clearAutoLockTimer() {
   }
 }
 
-async function saveAndRender() {
+async function saveAndRender(trackHistory = true) {
+  const snapshot = JSON.stringify(state);
+  if (trackHistory && snapshot !== lastSnapshot) {
+    undoStack.push(lastSnapshot);
+    if (undoStack.length > 80) {
+      undoStack.shift();
+    }
+    redoStack = [];
+  }
+  lastSnapshot = snapshot;
   if (isUnlocked && sessionPassphrase) {
     await persistEncryptedState(sessionPassphrase);
   }
@@ -1123,8 +1378,21 @@ function freshState() {
 }
 
 function normalizeState(input) {
+  const missions = Array.isArray(input?.missions) ? input.missions : [];
+  for (const mission of missions) {
+    mission.phases = Array.isArray(mission.phases) ? mission.phases : [];
+    mission.strategicMoves = Array.isArray(mission.strategicMoves) ? mission.strategicMoves : [];
+    for (const move of mission.strategicMoves) {
+      move.tags = Array.isArray(move.tags) ? move.tags : [];
+      move.priority = move.priority || "Medium";
+      move.deadline = move.deadline || null;
+      move.progress = clampNum(Number(move.progress ?? 0), 0, 100, 0);
+      move.color = move.color || "default";
+      move.archived = Boolean(move.archived);
+    }
+  }
   return {
-    missions: Array.isArray(input?.missions) ? input.missions : [],
+    missions,
     riskPoints: Array.isArray(input?.riskPoints) ? input.riskPoints : [],
     momentumLogs: Array.isArray(input?.momentumLogs) ? input.momentumLogs : []
   };
