@@ -67,6 +67,17 @@ body {
   backdrop-filter: blur(6px);
 }
 
+.vault-overlay-form {
+  margin-top: 0.35rem;
+  display: flex;
+  gap: 0.45rem;
+  width: min(420px, 92vw);
+}
+
+.vault-overlay-form input {
+  flex: 1;
+}
+
 .conceal-badge {
   position: fixed;
   top: 14px;
@@ -783,5 +794,9 @@ button:hover {
 
   .kpi-grid {
     grid-template-columns: 1fr;
+  }
+
+  .vault-overlay-form {
+    flex-direction: column;
   }
 }

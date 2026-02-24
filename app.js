@@ -80,6 +80,8 @@ const drawerLeverageBarsEl = document.getElementById("drawer-leverage-bars");
 const concealToggle = document.getElementById("escape-toggle");
 const vaultForm = document.getElementById("vault-form");
 const vaultPassphraseInput = document.getElementById("vault-passphrase");
+const vaultOverlayForm = document.getElementById("vault-overlay-form");
+const vaultOverlayPassphraseInput = document.getElementById("vault-overlay-passphrase");
 const vaultPrimaryBtn = document.getElementById("vault-primary");
 const vaultLockBtn = document.getElementById("vault-lock");
 const vaultRotateBtn = document.getElementById("vault-rotate");
@@ -297,19 +299,12 @@ function bindEvents() {
 
   vaultForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const passphrase = vaultPassphraseInput.value;
-    if (passphrase.length < 8) {
-      setVaultStatus("Passphrase must be at least 8 characters.", true);
-      return;
-    }
+    await submitVaultPassphrase(vaultPassphraseInput.value);
+  });
 
-    const encryptedPayload = readEncryptedPayload();
-    if (encryptedPayload) {
-      await unlockVault(passphrase, encryptedPayload);
-      return;
-    }
-
-    await setupNewVault(passphrase);
+  vaultOverlayForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await submitVaultPassphrase(vaultOverlayPassphraseInput.value);
   });
 
   vaultLockBtn.addEventListener("click", () => {
@@ -412,6 +407,7 @@ async function setupNewVault(passphrase) {
   syncVaultUI();
   renderAll();
   vaultPassphraseInput.value = "";
+  vaultOverlayPassphraseInput.value = "";
   setVaultStatus("Encrypted vault initialized and unlocked.");
 }
 
@@ -428,6 +424,7 @@ async function unlockVault(passphrase, payload) {
     syncVaultUI();
     renderAll();
     vaultPassphraseInput.value = "";
+    vaultOverlayPassphraseInput.value = "";
     setVaultStatus("Vault unlocked.");
   } catch {
     setVaultStatus("Unlock failed. Incorrect passphrase or corrupted data.", true);
@@ -476,6 +473,22 @@ function requireUnlocked() {
 
   setVaultStatus("Vault is locked. Unlock to continue.", true);
   return false;
+}
+
+async function submitVaultPassphrase(passphraseRaw) {
+  const passphrase = String(passphraseRaw || "");
+  if (passphrase.length < 8) {
+    setVaultStatus("Passphrase must be at least 8 characters.", true);
+    return;
+  }
+
+  const encryptedPayload = readEncryptedPayload();
+  if (encryptedPayload) {
+    await unlockVault(passphrase, encryptedPayload);
+    return;
+  }
+
+  await setupNewVault(passphrase);
 }
 
 function renderAll() {

@@ -18,6 +18,10 @@
     <div id="vault-overlay" class="vault-overlay" aria-hidden="true">
       <p>VAULT LOCKED</p>
       <small>Enter passphrase to access ShadowBoard</small>
+      <form id="vault-overlay-form" class="vault-overlay-form">
+        <input id="vault-overlay-passphrase" type="password" autocomplete="current-password" placeholder="Vault passphrase" minlength="8" required />
+        <button type="submit">Unlock</button>
+      </form>
     </div>
 
     <header class="app-header">
