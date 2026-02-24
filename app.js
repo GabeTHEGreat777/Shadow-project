@@ -1,5 +1,6 @@
 const LEGACY_STORAGE_KEY = "shadowboard-state-v1";
 const ENCRYPTED_STORAGE_KEY = "shadowboard-encrypted-v1";
+const OPEN_STORAGE_KEY = "shadowboard-open-state-v1";
 const KDF_ITERATIONS = 210000;
 const AUTO_LOCK_MS = 10 * 60 * 1000;
 const LEVERAGE_TYPES = ["Skill", "Network", "Capital", "Distribution", "Technology"];
@@ -9,7 +10,7 @@ const REMINDER_LOG_KEY = "shadowboard-reminder-log-v1";
 
 let state = freshState();
 let bootState = freshState();
-let isUnlocked = false;
+let isUnlocked = true;
 let sessionPassphrase = "";
 let autoLockTimer = null;
 let activeView = "dashboard";
@@ -102,16 +103,11 @@ async function init() {
   drawRiskGridBase();
   setView(activeView);
   registerSW();
-
-  const encryptedPayload = readEncryptedPayload();
-  if (encryptedPayload) {
-    lockVaultUI("Vault found. Enter passphrase to unlock.");
-    return;
-  }
-
-  bootState = loadLegacyState();
-  localStorage.removeItem(LEGACY_STORAGE_KEY);
-  lockVaultUI("Set a new passphrase to initialize encrypted vault storage.");
+  state = loadOpenState();
+  lastSnapshot = JSON.stringify(state);
+  document.body.classList.remove("vault-locked");
+  syncVaultUI();
+  renderAll();
 }
 
 function bindEvents() {
@@ -297,36 +293,12 @@ function bindEvents() {
     momentumScoreInput.value = "5";
   });
 
-  vaultForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    await submitVaultPassphrase(vaultPassphraseInput.value);
-  });
-
-  vaultOverlayForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    await submitVaultPassphrase(vaultOverlayPassphraseInput.value);
-  });
-
-  vaultLockBtn.addEventListener("click", () => {
-    lockVaultUI("Vault locked.");
-  });
-
-  vaultRotateBtn.addEventListener("click", async () => {
-    if (!requireUnlocked()) {
-      return;
-    }
-
-    const nextPassphrase = vaultPassphraseInput.value;
-    if (nextPassphrase.length < 8) {
-      setVaultStatus("Enter a new passphrase (min 8 chars) to rotate key.", true);
-      return;
-    }
-
-    await persistEncryptedState(nextPassphrase);
-    sessionPassphrase = nextPassphrase;
-    vaultPassphraseInput.value = "";
-    setVaultStatus("Vault key rotated.");
-  });
+  if (vaultForm) {
+    vaultForm.style.display = "none";
+  }
+  if (vaultOverlayForm) {
+    vaultOverlayForm.style.display = "none";
+  }
 
   concealToggle.addEventListener("click", toggleConcealment);
 
@@ -432,63 +404,24 @@ async function unlockVault(passphrase, payload) {
 }
 
 function lockVaultUI(message) {
-  isUnlocked = false;
-  sessionPassphrase = "";
-  clearAutoLockTimer();
-  closeMissionDrawer();
-  state = freshState();
-  undoStack = [];
-  redoStack = [];
-  lastSnapshot = JSON.stringify(state);
-  renderAll();
-  syncVaultUI();
-  setVaultStatus(message || "Vault locked.");
+  isUnlocked = true;
+  document.body.classList.remove("vault-locked");
+  setVaultStatus("");
 }
 
 function syncVaultUI() {
-  document.body.classList.toggle("vault-locked", !isUnlocked);
-
-  if (isUnlocked) {
-    vaultPrimaryBtn.textContent = "Unlock";
-    vaultPrimaryBtn.disabled = true;
-    vaultLockBtn.hidden = false;
-    vaultRotateBtn.hidden = false;
-    missionTitleInput.focus();
-    if (!state.momentumLogs.length) {
-      momentumWeekInput.value = todayISO();
-    }
-  } else {
-    vaultPrimaryBtn.disabled = false;
-    vaultPrimaryBtn.textContent = readEncryptedPayload() ? "Unlock" : "Set Passphrase";
-    vaultLockBtn.hidden = true;
-    vaultRotateBtn.hidden = true;
-    vaultPassphraseInput.focus();
+  document.body.classList.remove("vault-locked");
+  if (vaultStatusEl) {
+    vaultStatusEl.textContent = "";
   }
 }
 
 function requireUnlocked() {
-  if (isUnlocked) {
-    return true;
-  }
-
-  setVaultStatus("Vault is locked. Unlock to continue.", true);
-  return false;
+  return true;
 }
 
 async function submitVaultPassphrase(passphraseRaw) {
-  const passphrase = String(passphraseRaw || "");
-  if (passphrase.length < 8) {
-    setVaultStatus("Passphrase must be at least 8 characters.", true);
-    return;
-  }
-
-  const encryptedPayload = readEncryptedPayload();
-  if (encryptedPayload) {
-    await unlockVault(passphrase, encryptedPayload);
-    return;
-  }
-
-  await setupNewVault(passphrase);
+  return;
 }
 
 function renderAll() {
@@ -1432,9 +1365,7 @@ async function saveAndRender(trackHistory = true) {
     redoStack = [];
   }
   lastSnapshot = snapshot;
-  if (isUnlocked && sessionPassphrase) {
-    await persistEncryptedState(sessionPassphrase);
-  }
+  localStorage.setItem(OPEN_STORAGE_KEY, JSON.stringify(state));
   renderAll();
 }
 
@@ -1450,6 +1381,18 @@ function loadLegacyState() {
       return freshState();
     }
     return normalizeState(JSON.parse(raw));
+  } catch {
+    return freshState();
+  }
+}
+
+function loadOpenState() {
+  try {
+    const openRaw = localStorage.getItem(OPEN_STORAGE_KEY);
+    if (openRaw) {
+      return normalizeState(JSON.parse(openRaw));
+    }
+    return loadLegacyState();
   } catch {
     return freshState();
   }
