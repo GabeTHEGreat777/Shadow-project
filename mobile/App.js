@@ -134,8 +134,11 @@ export default function App() {
       <StatusBar barStyle="light-content" />
       <View style={styles.topBar}>
         <Text style={styles.menu}>☰</Text>
-        <Text style={styles.brand}>SHADOWBOARD</Text>
-        <Pressable onPress={() => setLocked(true)}><Text style={styles.menu}>◌</Text></Pressable>
+        <View style={styles.brandWrap}>
+          <View style={styles.brandDot} />
+          <Text style={styles.brand}>SHADOWBOARD</Text>
+        </View>
+        <Pressable onPress={() => setLocked(true)}><Text style={styles.menu}>◍</Text></Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.wrap}>
@@ -149,10 +152,10 @@ export default function App() {
         </View>
 
         <View style={styles.kpiGrid}>
-          <KpiCard label="ACTIVE PROJECTS" value={String(summary.active)} />
-          <KpiCard label="TOTAL PHASES" value={String(summary.phases)} />
-          <KpiCard label="TOTAL TASKS" value={String(summary.moves)} />
-          <KpiCard label="MOMENTUM SCORE" value={String(summary.momentumAvg)} />
+          <KpiCard icon="◎" label="ACTIVE PROJECTS" value={String(summary.active)} />
+          <KpiCard icon="◫" label="TOTAL PHASES" value={String(summary.phases)} />
+          <KpiCard icon="◌" label="TOTAL TASKS" value={String(summary.moves)} />
+          <KpiCard icon="↗" label="MOMENTUM SCORE" value={String(summary.momentumAvg)} />
         </View>
 
         <Text style={styles.sectionTitle}>RECENT PROJECTS</Text>
@@ -160,7 +163,10 @@ export default function App() {
           <View style={styles.projectCard}><Text style={styles.sub}>No projects yet. Add your first one above.</Text></View>
         ) : state.projects.slice(0, 5).map((p) => (
           <View key={p.id} style={styles.projectCard}>
-            <Text style={styles.projectName}>{p.title}</Text>
+            <View style={styles.projectTop}>
+              <Text style={styles.projectName}>{p.title}</Text>
+              <Text style={styles.chev}>›</Text>
+            </View>
             <Text style={styles.sub}>{p.domain}</Text>
             <View style={styles.projectMeta}>
               <Badge text={p.status} />
@@ -201,10 +207,10 @@ export default function App() {
   );
 }
 
-function KpiCard({ label, value }) {
+function KpiCard({ label, value, icon }) {
   return (
     <View style={styles.kpiCard}>
-      <Text style={styles.kpiLabel}>{label}</Text>
+      <Text style={styles.kpiLabel}>{icon ? `${icon}  ${label}` : label}</Text>
       <Text style={styles.kpiValue}>{value}</Text>
     </View>
   );
@@ -233,10 +239,12 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#16161f' },
   wrap: { padding: 14, paddingBottom: 30, gap: 10 },
   topBar: { borderBottomWidth: 1, borderBottomColor: '#2a2a36', paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  menu: { color: '#9ea0b1', fontSize: 22 },
-  brand: { color: '#ececf1', fontSize: 28, fontWeight: '800', letterSpacing: 1 },
-  h1: { color: '#ececf1', fontSize: 40, fontWeight: '800', marginTop: 4 },
-  sub: { color: '#9698a8', fontSize: 17 },
+  menu: { color: '#8e90a1', fontSize: 20 },
+  brandWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  brandDot: { width: 18, height: 18, borderRadius: 6, backgroundColor: '#2b2c3a', borderWidth: 1, borderColor: '#4a4b5d' },
+  brand: { color: '#ececf1', fontSize: 20, fontWeight: '800', letterSpacing: 1.2 },
+  h1: { color: '#ececf1', fontSize: 40, fontWeight: '800', marginTop: 6 },
+  sub: { color: '#9698a8', fontSize: 16 },
   err: { color: '#d58e8e' },
   input: { backgroundColor: '#20202b', borderColor: '#313140', borderWidth: 1, borderRadius: 10, color: '#ececf1', paddingHorizontal: 10, paddingVertical: 12 },
   newRow: { gap: 8 },
@@ -244,11 +252,13 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: '#ececf1', fontWeight: '700', fontSize: 17 },
   kpiGrid: { marginTop: 6, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   kpiCard: { width: '48.7%', backgroundColor: '#1e1f2a', borderColor: '#313241', borderWidth: 1, borderRadius: 12, padding: 12, minHeight: 90 },
-  kpiLabel: { color: '#8d8fa0', fontSize: 14, letterSpacing: 1 },
-  kpiValue: { color: '#ececf1', fontSize: 38, fontWeight: '700', marginTop: 4 },
-  sectionTitle: { color: '#9ea0b1', letterSpacing: 1.2, marginTop: 10, marginBottom: 4, fontSize: 18 },
+  kpiLabel: { color: '#8d8fa0', fontSize: 12, letterSpacing: 1.2 },
+  kpiValue: { color: '#ececf1', fontSize: 36, fontWeight: '700', marginTop: 4 },
+  sectionTitle: { color: '#9ea0b1', letterSpacing: 1.2, marginTop: 12, marginBottom: 4, fontSize: 18 },
   projectCard: { backgroundColor: '#20212d', borderColor: '#343647', borderWidth: 1, borderRadius: 14, padding: 12, gap: 6 },
+  projectTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   projectName: { color: '#ececf1', fontSize: 31, fontWeight: '700' },
+  chev: { color: '#8f91a5', fontSize: 26 },
   projectMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   badge: { color: '#79B77D', backgroundColor: 'rgba(121,183,125,0.15)', borderColor: 'rgba(121,183,125,0.3)', borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, fontSize: 13, fontWeight: '700' },
   metaText: { color: '#9a9cad', fontSize: 14 },
