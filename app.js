@@ -5,6 +5,7 @@ const AUTO_LOCK_MS = 10 * 60 * 1000;
 const LEVERAGE_TYPES = ["Skill", "Network", "Capital", "Distribution", "Technology"];
 const MISSION_STATUS = ["Planning", "Active", "Completed", "Abandoned"];
 const THEME_KEY = "shadowboard-theme-v1";
+const REMINDER_LOG_KEY = "shadowboard-reminder-log-v1";
 
 let state = freshState();
 let bootState = freshState();
@@ -19,6 +20,7 @@ let lastSnapshot = JSON.stringify(state);
 let searchTerm = "";
 let tagFilter = "";
 let showArchived = false;
+let draggedMove = null;
 
 const missionForm = document.getElementById("mission-form");
 const missionTitleInput = document.getElementById("mission-title");
@@ -83,6 +85,7 @@ const vaultLockBtn = document.getElementById("vault-lock");
 const vaultRotateBtn = document.getElementById("vault-rotate");
 const vaultStatusEl = document.getElementById("vault-status");
 const themeSelect = document.getElementById("theme-select");
+const notifyBtn = document.getElementById("notify-btn");
 const commandPalette = document.getElementById("command-palette");
 const commandInput = document.getElementById("command-input");
 const commandList = document.getElementById("command-list");
@@ -118,6 +121,9 @@ function bindEvents() {
 
   themeSelect.addEventListener("change", () => {
     applyTheme(themeSelect.value);
+  });
+  notifyBtn.addEventListener("click", async () => {
+    await requestReminderPermission();
   });
 
   missionSearchInput.addEventListener("input", () => {
@@ -366,6 +372,20 @@ function bindEvents() {
     }
   });
 
+  window.addEventListener("shadowboard:quickCapture", async (event) => {
+    const text = String(event.detail || "").trim();
+    if (!text) {
+      return;
+    }
+    await quickCaptureToBoard(text);
+  });
+
+  const captureParam = new URLSearchParams(window.location.search).get("capture");
+  if (captureParam) {
+    quickCaptureToBoard(captureParam);
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+
   const activityEvents = ["pointerdown", "mousemove", "touchstart", "scroll"];
   for (const eventName of activityEvents) {
     window.addEventListener(
@@ -467,6 +487,8 @@ function renderAll() {
   renderMissionDrawer();
   undoBtn.disabled = undoStack.length === 0;
   redoBtn.disabled = redoStack.length === 0;
+  updateReminderButton();
+  checkDeadlineReminders();
 }
 
 function renderDashboard() {
@@ -605,6 +627,35 @@ function renderMissions() {
     }
 
     const moveWrap = node.querySelector(".moves");
+    const statusBoard = document.createElement("div");
+    statusBoard.className = "status-board";
+    for (const status of MISSION_STATUS) {
+      const zone = document.createElement("div");
+      zone.className = "status-zone";
+      zone.textContent = status;
+      zone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        zone.classList.add("active");
+      });
+      zone.addEventListener("dragleave", () => zone.classList.remove("active"));
+      zone.addEventListener("drop", async (event) => {
+        event.preventDefault();
+        zone.classList.remove("active");
+        if (!draggedMove || draggedMove.missionId !== mission.id) {
+          return;
+        }
+        const move = mission.strategicMoves.find((item) => item.id === draggedMove.moveId);
+        if (!move) {
+          return;
+        }
+        move.status = status;
+        mission.status = missionDerivedStatus(mission);
+        await saveAndRender();
+      });
+      statusBoard.append(zone);
+    }
+    moveWrap.append(statusBoard);
+
     const visibleMoves = mission.strategicMoves.filter((move) => {
       if (!showArchived && move.archived) {
         return false;
@@ -619,6 +670,13 @@ function renderMissions() {
         const phase = mission.phases.find((p) => p.id === move.phaseId);
         const row = document.createElement("div");
         row.className = `move-row ${move.color && move.color !== "default" ? `color-${move.color}` : ""}`.trim();
+        row.draggable = true;
+        row.addEventListener("dragstart", () => {
+          draggedMove = { missionId: mission.id, moveId: move.id };
+        });
+        row.addEventListener("dragend", () => {
+          draggedMove = null;
+        });
 
         const left = document.createElement("div");
         const tags = move.tags?.length ? ` • #${move.tags.join(" #")}` : "";
@@ -1146,9 +1204,115 @@ function getCommands() {
     { id: "view-momentum", label: "Go Momentum", run: () => setView("momentum") },
     { id: "toggle-conceal", label: "Toggle Conceal Mode", run: () => toggleConcealment() },
     { id: "lock-vault", label: "Lock Vault", run: () => lockVaultUI("Vault locked.") },
+    { id: "capture-clipboard", label: "Quick Capture Prompt", run: async () => quickCaptureToBoard(prompt("Capture text") || "") },
     { id: "undo", label: "Undo", run: async () => applyUndo() },
     { id: "redo", label: "Redo", run: async () => applyRedo() }
   ];
+}
+
+async function quickCaptureToBoard(text) {
+  if (!isUnlocked) {
+    setVaultStatus("Unlock vault first to capture.", true);
+    return;
+  }
+  const clean = text.trim();
+  if (!clean) {
+    return;
+  }
+  let mission = state.missions.find((item) => item.title === "Quick Capture");
+  if (!mission) {
+    mission = {
+      id: uid(),
+      title: "Quick Capture",
+      horizonYears: 1,
+      status: "Planning",
+      phases: [{ id: uid(), title: "Inbox" }],
+      strategicMoves: [],
+      createdAt: Date.now()
+    };
+    state.missions.unshift(mission);
+  }
+  const inboxPhase = mission.phases[0];
+  mission.strategicMoves.unshift({
+    id: uid(),
+    title: clean.slice(0, 120),
+    tags: ["captured"],
+    leverageType: "Distribution",
+    priority: "Medium",
+    deadline: null,
+    progress: 0,
+    color: "blue",
+    phaseId: inboxPhase.id,
+    archived: false,
+    status: "Planning"
+  });
+  await saveAndRender();
+  setView("missions");
+}
+
+async function requestReminderPermission() {
+  if (!("Notification" in window)) {
+    setVaultStatus("Browser notifications are not supported on this device.", true);
+    return;
+  }
+  const result = await Notification.requestPermission();
+  if (result === "granted") {
+    setVaultStatus("Deadline reminders enabled.");
+  } else {
+    setVaultStatus("Reminders permission denied.", true);
+  }
+  updateReminderButton();
+}
+
+function updateReminderButton() {
+  if (!("Notification" in window)) {
+    notifyBtn.textContent = "No Notifications";
+    notifyBtn.disabled = true;
+    return;
+  }
+  const p = Notification.permission;
+  if (p === "granted") {
+    notifyBtn.textContent = "Reminders On";
+  } else if (p === "denied") {
+    notifyBtn.textContent = "Blocked";
+  } else {
+    notifyBtn.textContent = "Enable Reminders";
+  }
+}
+
+function checkDeadlineReminders() {
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    return;
+  }
+  const now = Date.now();
+  const oneDay = 24 * 60 * 60 * 1000;
+  const log = JSON.parse(localStorage.getItem(REMINDER_LOG_KEY) || "{}");
+  const moves = state.missions.flatMap((mission) =>
+    mission.strategicMoves
+      .filter((move) => move.deadline && !move.archived)
+      .map((move) => ({ missionTitle: mission.title, move }))
+  );
+  let changed = false;
+  for (const item of moves) {
+    const deadlineMs = new Date(`${item.move.deadline}T12:00:00`).getTime();
+    if (Number.isNaN(deadlineMs)) {
+      continue;
+    }
+    const diff = deadlineMs - now;
+    const shouldNotify = diff <= oneDay && diff >= -oneDay;
+    const key = `${item.move.id}-${new Date().toISOString().slice(0, 10)}`;
+    if (!shouldNotify || log[key]) {
+      continue;
+    }
+    new Notification("ShadowBoard Deadline", {
+      body: `${item.move.title} (${item.missionTitle}) is due ${shortDate(item.move.deadline)}`
+    });
+    log[key] = true;
+    changed = true;
+  }
+  if (changed) {
+    localStorage.setItem(REMINDER_LOG_KEY, JSON.stringify(log));
+  }
 }
 
 function toggleCommandPalette() {

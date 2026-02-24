@@ -1,12 +1,24 @@
 import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
+import * as Clipboard from 'expo-clipboard';
 
 const SHADOWBOARD_WEB_URL = 'https://gabethegreat777.github.io/Shadow-project/';
 
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
+
 export default function App() {
+  const webViewRef = useRef(null);
   const [hasError, setHasError] = useState(false);
   const [isBiometricReady, setIsBiometricReady] = useState(false);
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -54,6 +66,42 @@ export default function App() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);
 
+  const enableDailyReminder = useCallback(async () => {
+    const permission = await Notifications.requestPermissionsAsync();
+    if (!permission.granted) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'ShadowBoard',
+        body: 'Review deadlines and strategic momentum.',
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: 9,
+        minute: 0,
+      },
+    });
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
+
+  const captureClipboardToBoard = useCallback(async () => {
+    const text = (await Clipboard.getStringAsync()).trim();
+    if (!text) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
+    const escaped = JSON.stringify(text);
+    const script = `
+      window.dispatchEvent(new CustomEvent('shadowboard:quickCapture', { detail: ${escaped} }));
+      true;
+    `;
+    webViewRef.current?.injectJavaScript(script);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
   useEffect(() => {
     unlockWithBiometrics();
   }, [unlockWithBiometrics]);
@@ -87,12 +135,21 @@ export default function App() {
             {isBiometricReady ? (
               <View style={styles.lockBar}>
                 <Text style={styles.lockText}>Secure Session</Text>
-                <Pressable onPress={lockApp} style={styles.lockBtn}>
-                  <Text style={styles.lockBtnText}>Lock</Text>
-                </Pressable>
+                <View style={styles.lockActions}>
+                  <Pressable onPress={captureClipboardToBoard} style={styles.lockBtn}>
+                    <Text style={styles.lockBtnText}>Capture</Text>
+                  </Pressable>
+                  <Pressable onPress={enableDailyReminder} style={styles.lockBtn}>
+                    <Text style={styles.lockBtnText}>Remind</Text>
+                  </Pressable>
+                  <Pressable onPress={lockApp} style={styles.lockBtn}>
+                    <Text style={styles.lockBtnText}>Lock</Text>
+                  </Pressable>
+                </View>
               </View>
             ) : null}
             <WebView
+              ref={webViewRef}
               source={source}
               originWhitelist={['*']}
               javaScriptEnabled
@@ -173,6 +230,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 6,
     paddingHorizontal: 10,
+  },
+  lockActions: {
+    flexDirection: 'row',
+    gap: 6,
   },
   lockBtnText: {
     color: '#e4e8ef',

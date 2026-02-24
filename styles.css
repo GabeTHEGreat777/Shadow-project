@@ -571,6 +571,26 @@ button:hover {
   background: linear-gradient(90deg, #6e85aa, #a4b2c6);
 }
 
+.status-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.status-zone {
+  border: 1px dashed rgba(138, 138, 150, 0.32);
+  border-radius: 8px;
+  padding: 0.32rem 0.35rem;
+  text-align: center;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.status-zone.active {
+  border-color: rgba(138, 138, 150, 0.75);
+  background: rgba(138, 138, 150, 0.16);
+}
+
 .action-row {
   display: flex;
   gap: 0.35rem;
@@ -747,6 +767,10 @@ button:hover {
 
   .toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .status-board {
+    grid-template-columns: 1fr 1fr;
   }
 
   .bar {
