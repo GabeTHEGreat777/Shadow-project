@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1a1a1f" />
+    <meta name="description" content="ShadowBoard: Private Strategic War Room" />
+    <title>ShadowBoard</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="grid-overlay" aria-hidden="true"></div>
+
+    <div id="conceal-badge" class="conceal-badge" aria-hidden="true">CENCERED</div>
+
+    <div id="vault-overlay" class="vault-overlay" aria-hidden="true">
+      <p>VAULT LOCKED</p>
+      <small>Enter passphrase to access ShadowBoard</small>
+    </div>
+
+    <header class="app-header">
+      <div>
+        <h1>ShadowBoard</h1>
+        <p>Private Strategic War Room</p>
+      </div>
+
+      <div class="header-actions">
+        <button id="escape-toggle" class="ghost-btn" type="button">Conceal (Esc)</button>
+
+        <form id="vault-form" class="vault-controls">
+          <input id="vault-passphrase" type="password" autocomplete="current-password" placeholder="Vault passphrase" minlength="8" required />
+          <button id="vault-primary" type="submit">Unlock</button>
+          <button id="vault-lock" type="button" hidden>Lock</button>
+          <button id="vault-rotate" type="button" hidden>Rotate Key</button>
+        </form>
+      </div>
+    </header>
+
+    <p id="vault-status" class="vault-status" role="status" aria-live="polite"></p>
+
+    <nav class="top-nav" aria-label="ShadowBoard Sections">
+      <button class="nav-btn active" data-view="dashboard" type="button">Dashboard</button>
+      <button class="nav-btn" data-view="missions" type="button">Missions</button>
+      <button class="nav-btn" data-view="risk" type="button">Risk Surface</button>
+      <button class="nav-btn" data-view="momentum" type="button">Momentum</button>
+    </nav>
+
+    <main class="layout">
+      <section id="view-dashboard" class="panel view-panel">
+        <div class="panel-head">
+          <h2>Strategic Dashboard</h2>
+          <p>Operational snapshot of your long-horizon position</p>
+        </div>
+
+        <div id="kpi-grid" class="kpi-grid">
+          <article class="kpi-card">
+            <small>Active Missions</small>
+            <strong id="kpi-active-missions">0</strong>
+          </article>
+          <article class="kpi-card">
+            <small>Total Phases</small>
+            <strong id="kpi-total-phases">0</strong>
+          </article>
+          <article class="kpi-card">
+            <small>Total Strategic Moves</small>
+            <strong id="kpi-total-moves">0</strong>
+          </article>
+          <article class="kpi-card">
+            <small>Momentum Average</small>
+            <strong id="kpi-momentum-avg">0.0</strong>
+          </article>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="dashboard-block">
+            <h3>Recent Missions</h3>
+            <div id="dashboard-recent-missions" class="dashboard-list"></div>
+          </div>
+
+          <div class="dashboard-block">
+            <h3>Leverage Balance</h3>
+            <div id="dashboard-leverage-bars" class="lever-bars"></div>
+            <h3 class="dashboard-subhead">Recent Momentum</h3>
+            <div id="dashboard-recent-momentum" class="dashboard-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-missions" class="panel view-panel hidden-view">
+        <div class="panel-head">
+          <h2>Long Horizon Planner</h2>
+          <p>1-5 year arcs, not sprints.</p>
+        </div>
+
+        <form id="mission-form" class="stack-form">
+          <label>
+            Mission
+            <input id="mission-title" name="mission-title" maxlength="100" required placeholder="Build strategic position in..." />
+          </label>
+          <label>
+            Horizon (years)
+            <input id="mission-horizon" name="mission-horizon" type="number" min="1" max="5" value="3" required />
+          </label>
+          <button type="submit">Create Mission</button>
+        </form>
+
+        <div id="missions-list" class="missions-list"></div>
+      </section>
+
+      <section id="view-risk" class="panel split-panel view-panel hidden-view">
+        <div>
+          <div class="panel-head">
+            <h2>Leverage Mapping</h2>
+            <p>Skill, Network, Capital, Distribution, Technology</p>
+          </div>
+          <canvas id="leverage-chart" width="360" height="240" aria-label="Leverage balance chart"></canvas>
+          <div id="leverage-gap" class="metric-line"></div>
+        </div>
+
+        <div>
+          <div class="panel-head">
+            <h2>Risk Surface Analyzer</h2>
+            <p>10x10 Probability x Impact</p>
+          </div>
+
+          <form id="risk-form" class="stack-form compact">
+            <label>
+              Risk Point
+              <input id="risk-title" maxlength="100" required placeholder="Regulatory bottleneck" />
+            </label>
+            <label>
+              Probability (1-10)
+              <input id="risk-prob" type="number" min="1" max="10" value="5" required />
+            </label>
+            <label>
+              Impact (1-10)
+              <input id="risk-impact" type="number" min="1" max="10" value="5" required />
+            </label>
+            <button type="submit">Add Risk</button>
+          </form>
+
+          <div class="risk-metrics">
+            <p id="risk-total">Total Risks: 0</p>
+            <p id="avg-exposure">Average Exposure: 0</p>
+            <p id="peak-exposure">Peak Exposure: 0</p>
+          </div>
+          <div id="risk-grid" class="risk-grid" role="img" aria-label="Risk matrix"></div>
+          <div id="risk-list" class="risk-list"></div>
+        </div>
+      </section>
+
+      <section id="view-momentum" class="panel view-panel hidden-view">
+        <div class="panel-head">
+          <h2>Momentum Tracker</h2>
+          <p>Weekly strategic movement pulse</p>
+        </div>
+
+        <form id="momentum-form" class="stack-form compact row">
+          <label>
+            Week
+            <input id="momentum-week" type="date" required />
+          </label>
+          <label>
+            Score (0-10)
+            <input id="momentum-score" type="number" min="0" max="10" value="5" required />
+          </label>
+          <button type="submit">Log</button>
+        </form>
+
+        <div class="risk-metrics">
+          <p id="momentum-trend">Trend: --</p>
+          <p id="stagnation-alert">Stagnation: --</p>
+        </div>
+        <div id="momentum-bars" class="momentum-bars"></div>
+      </section>
+    </main>
+
+    <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+    <aside id="mission-drawer" class="mission-drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <h2 id="drawer-title">Mission Detail</h2>
+          <p id="drawer-subtitle" class="meta"></p>
+        </div>
+        <div class="action-row">
+          <button id="drawer-cycle-mission" type="button">Cycle Mission</button>
+          <button id="drawer-close" type="button">Close</button>
+        </div>
+      </div>
+
+      <div class="drawer-grid">
+        <div>
+          <h3>Phases</h3>
+          <form id="drawer-phase-form" class="compact-inline">
+            <input id="drawer-phase-title" maxlength="80" placeholder="Add phase" required />
+            <button type="submit">Add</button>
+          </form>
+          <div id="drawer-phases" class="dashboard-list"></div>
+
+          <h3 class="dashboard-subhead">Strategic Moves</h3>
+          <form id="drawer-move-form" class="move-form compact-inline">
+            <input id="drawer-move-title" maxlength="80" placeholder="Strategic move" required />
+            <select id="drawer-move-leverage" required>
+              <option value="Skill">Skill</option>
+              <option value="Network">Network</option>
+              <option value="Capital">Capital</option>
+              <option value="Distribution">Distribution</option>
+              <option value="Technology">Technology</option>
+            </select>
+            <select id="drawer-move-phase" required></select>
+            <button type="submit">Add</button>
+          </form>
+          <div id="drawer-moves" class="dashboard-list"></div>
+        </div>
+
+        <div>
+          <h3>Mission Leverage Mix</h3>
+          <div id="drawer-leverage-bars" class="lever-bars"></div>
+        </div>
+      </div>
+    </aside>
+
+    <template id="mission-template">
+      <article class="mission-card">
+        <div class="mission-top">
+          <h3></h3>
+          <span class="pill"></span>
+        </div>
+        <p class="meta"></p>
+
+        <form class="phase-form compact-inline">
+          <input class="phase-title" maxlength="80" placeholder="Add phase" required />
+          <button type="submit">Add Phase</button>
+        </form>
+
+        <div class="phases"></div>
+
+        <form class="move-form compact-inline">
+          <input class="move-title" maxlength="80" placeholder="Strategic move" required />
+          <select class="move-leverage" required>
+            <option value="Skill">Skill</option>
+            <option value="Network">Network</option>
+            <option value="Capital">Capital</option>
+            <option value="Distribution">Distribution</option>
+            <option value="Technology">Technology</option>
+          </select>
+          <select class="move-phase" required></select>
+          <button type="submit">Add Move</button>
+        </form>
+
+        <div class="moves"></div>
+      </article>
+    </template>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
