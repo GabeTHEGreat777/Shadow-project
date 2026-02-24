@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SafeAreaView, StatusBar, Text, TextInput, View, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { SafeAreaView, StatusBar, Text, TextInput, View, Pressable, ScrollView, StyleSheet, Dimensions } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -132,6 +132,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar barStyle="light-content" />
+      <GridOverlay />
       <View style={styles.topBar}>
         <Text style={styles.menu}>☰</Text>
         <View style={styles.brandWrap}>
@@ -163,6 +164,7 @@ export default function App() {
           <View style={styles.projectCard}><Text style={styles.sub}>No projects yet. Add your first one above.</Text></View>
         ) : state.projects.slice(0, 5).map((p) => (
           <View key={p.id} style={styles.projectCard}>
+            <View style={styles.projectAccent} />
             <View style={styles.projectTop}>
               <Text style={styles.projectName}>{p.title}</Text>
               <Text style={styles.chev}>›</Text>
@@ -216,6 +218,24 @@ function KpiCard({ label, value, icon }) {
   );
 }
 
+function GridOverlay() {
+  const { width, height } = Dimensions.get('window');
+  const step = 42;
+  const cols = Math.ceil(width / step);
+  const rows = Math.ceil(height / step);
+
+  return (
+    <View pointerEvents="none" style={styles.gridOverlay}>
+      {Array.from({ length: cols }).map((_, i) => (
+        <View key={`v-${i}`} style={[styles.gridLineV, { left: i * step }]} />
+      ))}
+      {Array.from({ length: rows }).map((_, i) => (
+        <View key={`h-${i}`} style={[styles.gridLineH, { top: i * step }]} />
+      ))}
+    </View>
+  );
+}
+
 function Badge({ text }) {
   return <Text style={styles.badge}>{text}</Text>;
 }
@@ -237,6 +257,9 @@ function StackBar({ label, value, max, color }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#16161f' },
+  gridOverlay: { position: 'absolute', inset: 0, opacity: 0.2 },
+  gridLineV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: '#2a2b38' },
+  gridLineH: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: '#2a2b38' },
   wrap: { padding: 14, paddingBottom: 30, gap: 10 },
   topBar: { borderBottomWidth: 1, borderBottomColor: '#2a2a36', paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   menu: { color: '#8e90a1', fontSize: 20 },
@@ -246,16 +269,17 @@ const styles = StyleSheet.create({
   h1: { color: '#ececf1', fontSize: 40, fontWeight: '800', marginTop: 6 },
   sub: { color: '#9698a8', fontSize: 16 },
   err: { color: '#d58e8e' },
-  input: { backgroundColor: '#20202b', borderColor: '#313140', borderWidth: 1, borderRadius: 10, color: '#ececf1', paddingHorizontal: 10, paddingVertical: 12 },
+  input: { backgroundColor: '#20202b', borderColor: '#313140', borderWidth: 1, borderRadius: 8, color: '#ececf1', paddingHorizontal: 10, paddingVertical: 12 },
   newRow: { gap: 8 },
-  primaryBtn: { backgroundColor: '#2e2f3f', borderColor: '#47495d', borderWidth: 1, borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
+  primaryBtn: { backgroundColor: '#2e2f3f', borderColor: '#47495d', borderWidth: 1, borderRadius: 8, paddingVertical: 11, alignItems: 'center' },
   primaryBtnText: { color: '#ececf1', fontWeight: '700', fontSize: 17 },
   kpiGrid: { marginTop: 6, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  kpiCard: { width: '48.7%', backgroundColor: '#1e1f2a', borderColor: '#313241', borderWidth: 1, borderRadius: 12, padding: 12, minHeight: 90 },
+  kpiCard: { width: '48.7%', backgroundColor: '#1e1f2a', borderColor: '#313241', borderWidth: 1, borderRadius: 10, padding: 12, minHeight: 90 },
   kpiLabel: { color: '#8d8fa0', fontSize: 12, letterSpacing: 1.2 },
   kpiValue: { color: '#ececf1', fontSize: 36, fontWeight: '700', marginTop: 4 },
   sectionTitle: { color: '#9ea0b1', letterSpacing: 1.2, marginTop: 12, marginBottom: 4, fontSize: 18 },
-  projectCard: { backgroundColor: '#20212d', borderColor: '#343647', borderWidth: 1, borderRadius: 14, padding: 12, gap: 6 },
+  projectCard: { backgroundColor: '#20212d', borderColor: '#343647', borderWidth: 1, borderRadius: 10, padding: 12, gap: 6 },
+  projectAccent: { height: 2, borderRadius: 999, backgroundColor: 'rgba(199,143,143,0.85)', marginBottom: 6 },
   projectTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   projectName: { color: '#ececf1', fontSize: 31, fontWeight: '700' },
   chev: { color: '#8f91a5', fontSize: 26 },
@@ -263,7 +287,7 @@ const styles = StyleSheet.create({
   badge: { color: '#79B77D', backgroundColor: 'rgba(121,183,125,0.15)', borderColor: 'rgba(121,183,125,0.3)', borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, fontSize: 13, fontWeight: '700' },
   metaText: { color: '#9a9cad', fontSize: 14 },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
-  tinyBtn: { backgroundColor: '#2b2d3b', borderColor: '#43465a', borderWidth: 1, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 5 },
+  tinyBtn: { backgroundColor: '#2b2d3b', borderColor: '#43465a', borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 },
   tinyText: { color: '#d7d8e3', fontSize: 12 },
   stackRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
   stackLabel: { color: '#a6a8b8', width: 110, fontSize: 16 },
