@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { SafeAreaView, StatusBar, Text, TextInput, View, Pressable, ScrollView, StyleSheet, Dimensions } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
 
 const STORE_KEY = 'shadowboard_native_v2';
 
@@ -19,6 +20,9 @@ export default function App() {
 
   const [title, setTitle] = useState('');
   const [domain, setDomain] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [micStatus, setMicStatus] = useState('');
+  const [recordingObj, setRecordingObj] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -52,6 +56,38 @@ export default function App() {
 
     if (auth.success) setLocked(false);
     else setLockError('Unlock failed. Try again.');
+  };
+
+  const toggleMic = async () => {
+    try {
+      if (!isRecording) {
+        const perm = await Audio.requestPermissionsAsync();
+        if (!perm.granted) {
+          setMicStatus('Microphone permission denied.');
+          return;
+        }
+
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const rec = new Audio.Recording();
+        await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+        await rec.startAsync();
+        setRecordingObj(rec);
+        setIsRecording(true);
+        setMicStatus('Recording...');
+      } else {
+        if (recordingObj) {
+          await recordingObj.stopAndUnloadAsync();
+          const uri = recordingObj.getURI();
+          setMicStatus(uri ? 'Audio captured successfully.' : 'Recording stopped.');
+        }
+        setRecordingObj(null);
+        setIsRecording(false);
+      }
+    } catch (e) {
+      setMicStatus('Mic error. Try again.');
+      setIsRecording(false);
+      setRecordingObj(null);
+    }
   };
 
   const addProject = () => {
@@ -139,12 +175,16 @@ export default function App() {
           <View style={styles.brandDot} />
           <Text style={styles.brand}>SHADOWBOARD</Text>
         </View>
-        <Pressable onPress={() => setLocked(true)}><Text style={styles.menu}>◍</Text></Pressable>
+        <View style={styles.topActions}>
+          <Pressable onPress={toggleMic}><Text style={[styles.menu, isRecording && styles.micOn]}>{isRecording ? '🎙️' : '🎤'}</Text></Pressable>
+          <Pressable onPress={() => setLocked(true)}><Text style={styles.menu}>◍</Text></Pressable>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.wrap}>
         <Text style={styles.h1}>Project Dashboard</Text>
         <Text style={styles.sub}>Overview of all your coding projects</Text>
+        {!!micStatus && <Text style={styles.micStatus}>{micStatus}</Text>}
 
         <View style={styles.newRow}>
           <TextInput value={title} onChangeText={setTitle} placeholder="Project title" placeholderTextColor="#8b8b9b" style={styles.input} />
@@ -262,12 +302,15 @@ const styles = StyleSheet.create({
   gridLineH: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: '#2a2b38' },
   wrap: { padding: 14, paddingBottom: 30, gap: 10 },
   topBar: { borderBottomWidth: 1, borderBottomColor: '#2a2a36', paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  topActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   menu: { color: '#8e90a1', fontSize: 20 },
+  micOn: { color: '#7bd18e' },
   brandWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandDot: { width: 18, height: 18, borderRadius: 6, backgroundColor: '#2b2c3a', borderWidth: 1, borderColor: '#4a4b5d' },
   brand: { color: '#ececf1', fontSize: 20, fontWeight: '800', letterSpacing: 1.2 },
   h1: { color: '#ececf1', fontSize: 40, fontWeight: '800', marginTop: 6 },
   sub: { color: '#9698a8', fontSize: 16 },
+  micStatus: { color: '#8da6b6', fontSize: 13 },
   err: { color: '#d58e8e' },
   input: { backgroundColor: '#20202b', borderColor: '#313140', borderWidth: 1, borderRadius: 8, color: '#ececf1', paddingHorizontal: 10, paddingVertical: 12 },
   newRow: { gap: 8 },
